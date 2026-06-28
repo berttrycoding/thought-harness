@@ -1,0 +1,433 @@
+{
+  "edges": [
+    [
+      "br:ep:1:0",
+      "contains",
+      "th:ep:1:1"
+    ],
+    [
+      "br:ep:1:0",
+      "contains",
+      "th:ep:1:2"
+    ],
+    [
+      "br:ep:1:0",
+      "contains",
+      "th:ep:1:3"
+    ],
+    [
+      "br:ep:1:0",
+      "contains",
+      "th:ep:1:4"
+    ],
+    [
+      "dec:2",
+      "decided_on",
+      "br:ep:1:0"
+    ],
+    [
+      "dec:3",
+      "decided_on",
+      "br:ep:1:0"
+    ],
+    [
+      "dec:4",
+      "decided_on",
+      "br:ep:1:0"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "br:ep:1:0"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "dec:2"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "dec:3"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "dec:4"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "fire:build@2"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "fire:build@3"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "fire:build@4"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "goal:ep:1"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "inj:2#1"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "inj:3#2"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "inj:4#3"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "ph:seq(decompose, generate, validate)#0"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "ph:seq(decompose, generate, validate)#1"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "ph:seq(decompose, generate, validate)#2"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "resp:4"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "sk:design-feature"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "sp:build"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "th:ep:1:1"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "th:ep:1:2"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "th:ep:1:3"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "th:ep:1:4"
+    ],
+    [
+      "ep:1",
+      "contains",
+      "wf:seq(decompose, generate, validate)"
+    ],
+    [
+      "ep:1",
+      "matched",
+      "sk:design-feature"
+    ],
+    [
+      "ep:1",
+      "pursues",
+      "goal:ep:1"
+    ],
+    [
+      "fire:build@2",
+      "admitted_as",
+      "inj:2#1"
+    ],
+    [
+      "fire:build@3",
+      "admitted_as",
+      "inj:3#2"
+    ],
+    [
+      "fire:build@4",
+      "admitted_as",
+      "inj:4#3"
+    ],
+    [
+      "inj:2#1",
+      "voiced_as",
+      "th:ep:1:2"
+    ],
+    [
+      "inj:3#2",
+      "voiced_as",
+      "th:ep:1:3"
+    ],
+    [
+      "inj:4#3",
+      "voiced_as",
+      "th:ep:1:4"
+    ],
+    [
+      "sp:build",
+      "fired",
+      "fire:build@2"
+    ],
+    [
+      "sp:build",
+      "fired",
+      "fire:build@3"
+    ],
+    [
+      "sp:build",
+      "fired",
+      "fire:build@4"
+    ],
+    [
+      "th:ep:1:1",
+      "triggered",
+      "fire:build@2"
+    ],
+    [
+      "th:ep:1:2",
+      "triggered",
+      "fire:build@3"
+    ],
+    [
+      "th:ep:1:3",
+      "triggered",
+      "fire:build@4"
+    ],
+    [
+      "wf:seq(decompose, generate, validate)",
+      "has_phase",
+      "ph:seq(decompose, generate, validate)#0"
+    ],
+    [
+      "wf:seq(decompose, generate, validate)",
+      "has_phase",
+      "ph:seq(decompose, generate, validate)#1"
+    ],
+    [
+      "wf:seq(decompose, generate, validate)",
+      "has_phase",
+      "ph:seq(decompose, generate, validate)#2"
+    ]
+  ],
+  "nodes": [
+    {
+      "id": "br:ep:1:0",
+      "label": "branch 0",
+      "layer": "conscious",
+      "process": "ep:1",
+      "tick": 1,
+      "type": "branch"
+    },
+    {
+      "id": "dec:2",
+      "label": "THINK: advancing through workflow phases",
+      "layer": "critic",
+      "process": "ep:1",
+      "tick": 2,
+      "type": "decision"
+    },
+    {
+      "id": "dec:3",
+      "label": "THINK: advancing through workflow phases",
+      "layer": "critic",
+      "process": "ep:1",
+      "tick": 3,
+      "type": "decision"
+    },
+    {
+      "id": "dec:4",
+      "label": "STOP: goal satisfied",
+      "layer": "critic",
+      "process": "ep:1",
+      "tick": 4,
+      "type": "decision"
+    },
+    {
+      "id": "ep:1",
+      "label": "Design a small API for a todo service",
+      "layer": "process",
+      "process": "ep:1",
+      "tick": 1,
+      "type": "episode"
+    },
+    {
+      "id": "fire:build@2",
+      "label": "build fired: decomposed into: Design a small API for ",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 2,
+      "type": "firing"
+    },
+    {
+      "id": "fire:build@3",
+      "label": "build fired: [generate] draft for build: a concrete f",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 3,
+      "type": "firing"
+    },
+    {
+      "id": "fire:build@4",
+      "label": "build fired: [validate] checks for build: inputs vali",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 4,
+      "type": "firing"
+    },
+    {
+      "id": "goal:ep:1",
+      "label": "goal [USER]: Design a small API for a todo service",
+      "layer": "process",
+      "process": "ep:1",
+      "tick": 1,
+      "type": "goal"
+    },
+    {
+      "id": "inj:2#1",
+      "label": "injected (build)",
+      "layer": "seam",
+      "process": "ep:1",
+      "tick": 2,
+      "type": "injection"
+    },
+    {
+      "id": "inj:3#2",
+      "label": "injected (build)",
+      "layer": "seam",
+      "process": "ep:1",
+      "tick": 3,
+      "type": "injection"
+    },
+    {
+      "id": "inj:4#3",
+      "label": "injected (build)",
+      "layer": "seam",
+      "process": "ep:1",
+      "tick": 4,
+      "type": "injection"
+    },
+    {
+      "id": "ph:seq(decompose, generate, validate)#0",
+      "label": "phase 0 (DECOMPOSE)",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 2,
+      "type": "phase"
+    },
+    {
+      "id": "ph:seq(decompose, generate, validate)#1",
+      "label": "phase 1 (GENERATE)",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 3,
+      "type": "phase"
+    },
+    {
+      "id": "ph:seq(decompose, generate, validate)#2",
+      "label": "phase 2 (VALIDATE)",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 4,
+      "type": "phase"
+    },
+    {
+      "id": "resp:4",
+      "label": "answer: Decomposed into: Design a small API for a todo",
+      "layer": "action",
+      "process": "ep:1",
+      "tick": 4,
+      "type": "response"
+    },
+    {
+      "id": "sk:design-feature",
+      "label": "skill design-feature (composite)",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 1,
+      "type": "skill"
+    },
+    {
+      "id": "sp:build",
+      "label": "build sub-agent",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 2,
+      "type": "specialist"
+    },
+    {
+      "id": "th:ep:1:1",
+      "label": "[GENERATED] Design a small API for a todo service",
+      "layer": "conscious",
+      "process": "ep:1",
+      "tick": 1,
+      "type": "thought"
+    },
+    {
+      "id": "th:ep:1:2",
+      "label": "[INJECTED] I can see it \u2014 decomposed into: Design a small A",
+      "layer": "conscious",
+      "process": "ep:1",
+      "tick": 2,
+      "type": "thought"
+    },
+    {
+      "id": "th:ep:1:3",
+      "label": "[INJECTED] It comes to me: [generate] draft for build: a co",
+      "layer": "conscious",
+      "process": "ep:1",
+      "tick": 3,
+      "type": "thought"
+    },
+    {
+      "id": "th:ep:1:4",
+      "label": "[INJECTED] I can see it \u2014 [validate] checks for build: inpu",
+      "layer": "conscious",
+      "process": "ep:1",
+      "tick": 4,
+      "type": "thought"
+    },
+    {
+      "id": "wf:seq(decompose, generate, validate)",
+      "label": "workflow seq(decompose, generate, validate)",
+      "layer": "subconscious",
+      "process": "ep:1",
+      "tick": 2,
+      "type": "workflow"
+    }
+  ],
+  "stats": {
+    "by_layer": {
+      "action": 1,
+      "conscious": 5,
+      "critic": 3,
+      "process": 2,
+      "seam": 3,
+      "subconscious": 9
+    },
+    "edges": 46,
+    "nodes": 23,
+    "processes": 1
+  }
+}

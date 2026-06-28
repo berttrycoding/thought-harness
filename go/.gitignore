@@ -1,0 +1,20 @@
+# Compiled binary (built with `go build ./cmd/thought`)
+/thought
+# Stable build output linked onto PATH (~/.local/bin/thought -> bin/thought); see Makefile
+/bin/
+# Other built cmd binaries (go build ./cmd/<x>) that must never be committed
+/bench
+/costest
+/trprobe
+/speedbench
+# Go test/build artifacts
+*.test
+*.out
+
+# Benchmark / trace-probe RUN OUTPUTS under runs/ — regenerated artifacts, never source.
+# Ignore the WHOLE dir (the old per-glob list missed *.console, *.txt, *.err, etc.).
+# (Pin a curated baseline by force-adding it: `git add -f runs/<name>`.)
+/runs/
+# Substrate-segregated registry STATE (mutable, campaign-minted; never source — stays on
+# disk + in history, but the campaign churns it, so it must not be tracked).
+/data/registry-*/

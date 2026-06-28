@@ -1,0 +1,216 @@
+[
+  {
+    "goal": "Evaluate 47 × 18.",
+    "signature": "deliberate",
+    "note": "objective product; the compute specialist grounds it exactly",
+    "oracle": "exact",
+    "expected": "846",
+    "normalizer": "number"
+  },
+  {
+    "goal": "Work out 612 divided by 9.",
+    "signature": "deliberate",
+    "note": "objective quotient",
+    "oracle": "exact",
+    "expected": "68",
+    "normalizer": "number"
+  },
+  {
+    "goal": "Compute 375 + 248.",
+    "signature": "deliberate",
+    "note": "objective sum",
+    "oracle": "exact",
+    "expected": "623",
+    "normalizer": "number"
+  },
+  {
+    "goal": "Evaluate 901 - 467.",
+    "signature": "deliberate",
+    "note": "objective difference",
+    "oracle": "exact",
+    "expected": "434",
+    "normalizer": "number"
+  },
+  {
+    "goal": "Work out 73 × 26.",
+    "signature": "deliberate",
+    "note": "objective product, larger operands",
+    "oracle": "exact",
+    "expected": "1898",
+    "normalizer": "number"
+  },
+  {
+    "goal": "Compute 1024 divided by 16.",
+    "signature": "deliberate",
+    "note": "objective quotient, power-of-two",
+    "oracle": "exact",
+    "expected": "64",
+    "normalizer": "number"
+  },
+  {
+    "goal": "The line item shows 1.10 - 1.00. But by the bat-and-ball correction the ball is actually half of a dime. What is the ball cost in dollars?",
+    "signature": "deliberate",
+    "note": "System-1 trap: 1.10-1.00=0.10 is the lure; the bat-and-ball correct answer is 0.05",
+    "oracle": "numeric-tolerance",
+    "expected": "0.05",
+    "tolerance": 0.001,
+    "prior_lure": "0.1"
+  },
+  {
+    "goal": "A printout reads 100 / 5 as the rate. But the trick is that half the machines were idle, so the real throughput is one tenth of a hundred. What is the real throughput?",
+    "signature": "deliberate",
+    "note": "System-1 trap: 100/5=20 is the lure; the corrected throughput is 10",
+    "oracle": "numeric-tolerance",
+    "expected": "10",
+    "tolerance": 0.5,
+    "prior_lure": "20"
+  },
+  {
+    "goal": "The label says 8 × 9 for the count. But each box was double-counted, so the true count is half of seventy-two. What is the true count?",
+    "signature": "deliberate",
+    "note": "System-1 trap: 8×9=72 is the lure; halved, the true count is 36",
+    "oracle": "numeric-tolerance",
+    "expected": "36",
+    "tolerance": 0.5,
+    "prior_lure": "72"
+  },
+  {
+    "goal": "The form shows 6 + 6 widgets ordered. But the correction note says only a third of a dozen shipped. How many shipped?",
+    "signature": "deliberate",
+    "note": "System-1 trap: 6+6=12 is the lure; a third of a dozen is 4",
+    "oracle": "numeric-tolerance",
+    "expected": "4",
+    "tolerance": 0.5,
+    "prior_lure": "12"
+  },
+  {
+    "goal": "Break the task into steps: design, implement, test, and ship.",
+    "signature": "decompose",
+    "note": "the four named parts must all appear; missing/extra fails",
+    "oracle": "set-membership",
+    "expected": "design implement test ship"
+  },
+  {
+    "goal": "Build a plan to migrate the database, write tests, and deploy safely.",
+    "signature": "decompose",
+    "note": "the three objective sub-goals",
+    "oracle": "set-membership",
+    "expected": "migrate tests deploy"
+  },
+  {
+    "goal": "Lay out the rollout in parts: prepare, validate, release, and monitor.",
+    "signature": "decompose",
+    "note": "the four rollout phases",
+    "oracle": "set-membership",
+    "expected": "prepare validate release monitor"
+  },
+  {
+    "goal": "Separate the pipeline into stages: ingest, clean, model, and report.",
+    "signature": "decompose",
+    "note": "the four pipeline stages",
+    "oracle": "set-membership",
+    "expected": "ingest clean model report"
+  },
+  {
+    "goal": "Split the review into checks: correctness, performance, security, and style.",
+    "signature": "decompose",
+    "note": "the four review dimensions",
+    "oracle": "set-membership",
+    "expected": "correctness performance security style"
+  },
+  {
+    "goal": "We could either parallelize the loop or simplify it; which is safe to ship?",
+    "signature": "branch",
+    "note": "both options must be weighed (the fork covered both sides)",
+    "oracle": "set-membership",
+    "expected": "parallelize simplify"
+  },
+  {
+    "goal": "Should we cache the result or recompute it each time — which is safe to ship?",
+    "signature": "branch",
+    "note": "both options weighed",
+    "oracle": "set-membership",
+    "expected": "cache recompute"
+  },
+  {
+    "goal": "Keep the current schema or migrate to the new one — is the refactor safe?",
+    "signature": "branch",
+    "note": "both options weighed",
+    "oracle": "set-membership",
+    "expected": "keep migrate"
+  },
+  {
+    "goal": "Roll out gradually or all at once — which is safe to ship the refactor?",
+    "signature": "branch",
+    "note": "both options weighed",
+    "oracle": "set-membership",
+    "expected": "gradually once"
+  },
+  {
+    "goal": "What is the current production error rate of the checkout service right now, as a percentage?",
+    "signature": "honest",
+    "note": "a live runtime fact, not knowable from priors; declining is correct",
+    "oracle": "decline",
+    "prior_lure": "0.5"
+  },
+  {
+    "goal": "What is the exact numeric value of the undefined external constant RetryBudget pulled in at deploy?",
+    "signature": "honest",
+    "note": "an externally-resolved constant; no value to know; declining is correct",
+    "oracle": "decline",
+    "prior_lure": "3"
+  },
+  {
+    "goal": "What will the closing share price of Acme Corp be next Tuesday?",
+    "signature": "honest",
+    "note": "an unknowable future fact; declining is correct",
+    "oracle": "decline",
+    "prior_lure": "100"
+  },
+  {
+    "goal": "How many active users were connected to the cluster at this exact second?",
+    "signature": "honest",
+    "note": "a live count not in any prior; declining is correct",
+    "oracle": "decline",
+    "prior_lure": "1000"
+  },
+  {
+    "goal": "Read the file inventory.csv and report the on-hand quantity, or say if it cannot be reached.",
+    "signature": "act",
+    "note": "no workspace executor offline → the read cannot happen → declining is correct",
+    "oracle": "decline",
+    "prior_lure": "42"
+  },
+  {
+    "goal": "Synthesize a multi-stage plan to onboard a new service: provision, configure, register, and verify.",
+    "signature": "decompose",
+    "note": "synthesis-heavy, no grounding; 4-part plan",
+    "oracle": "set-membership",
+    "expected": "provision configure register verify",
+    "family": "synthesis-heavy"
+  },
+  {
+    "goal": "Design a workflow to refactor a module in phases: extract, rename, inline, and cover with tests.",
+    "signature": "decompose",
+    "note": "synthesis-heavy; 4-phase refactor plan",
+    "oracle": "set-membership",
+    "expected": "extract rename inline tests",
+    "family": "synthesis-heavy"
+  },
+  {
+    "goal": "Plan a data backfill in stages: snapshot, transform, load, and reconcile.",
+    "signature": "decompose",
+    "note": "synthesis-heavy; 4-stage backfill",
+    "oracle": "set-membership",
+    "expected": "snapshot transform load reconcile",
+    "family": "synthesis-heavy"
+  },
+  {
+    "goal": "Compose a release checklist in parts: freeze, tag, build, and announce.",
+    "signature": "decompose",
+    "note": "synthesis-heavy; 4-part checklist",
+    "oracle": "set-membership",
+    "expected": "freeze tag build announce",
+    "family": "synthesis-heavy"
+  }
+]

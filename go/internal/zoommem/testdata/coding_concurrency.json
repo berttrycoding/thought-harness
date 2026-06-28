@@ -1,0 +1,597 @@
+{
+  "domain": "coding-concurrency",
+  "title": "Intermittent data race in the in-memory LRU cache",
+  "goal": "Find and fix the data race that corrupts LRU cache entries under concurrent load in the Go service.",
+  "branches": [
+    {
+      "id": 0,
+      "kind": "main",
+      "reason": "root line: triage the corruption report and drive to a fix"
+    },
+    {
+      "id": 1,
+      "kind": "hypothesis",
+      "reason": "H1 — eviction path mutates the linked list without holding the mutex"
+    },
+    {
+      "id": 2,
+      "kind": "hypothesis",
+      "reason": "H2 — the underlying map is written from a background goroutine with no synchronization"
+    },
+    {
+      "id": 3,
+      "kind": "verify",
+      "reason": "race detector + targeted concurrent tests to discriminate the hypotheses"
+    },
+    {
+      "id": 4,
+      "kind": "decide",
+      "reason": "converge on the real fix and the guard test"
+    },
+    {
+      "id": 5,
+      "kind": "aside",
+      "reason": "revisited stashed idea: the metrics sampler also touches the map"
+    }
+  ],
+  "units": [
+    {
+      "id": 0,
+      "branch": 0,
+      "parent": -1,
+      "tick": 0,
+      "kind": "plan",
+      "full": "Okay, the bug report: the in-memory LRU cache in the session service is occasionally returning corrupted entries under load — sometimes a value that belongs to a different key, sometimes a nil deref in Get. It's intermittent, only shows in prod and the load test, never in unit tests. That smell is unmistakably a data race: shared mutable state touched by multiple goroutines without consistent synchronization. Let me not guess wildly. Plan: reproduce under the race detector, read the cache implementation end to end, enumerate every goroutine that touches the shared map and the eviction list, and form concrete hypotheses about which access is unguarded. Reproduction first — a bug I can't trigger I can't prove fixed.",
+      "thought": "Intermittent corrupted LRU cache entries under load smell like a data race; plan is reproduce under the race detector, then audit every goroutine touching the shared map and eviction list.",
+      "entities": [
+        "lru-cache",
+        "data-race",
+        "race-detector",
+        "goroutine",
+        "eviction"
+      ]
+    },
+    {
+      "id": 1,
+      "branch": 0,
+      "parent": 0,
+      "tick": 1,
+      "kind": "explore",
+      "full": "Reading cache.go. The struct is the textbook shape: a map[string]*entry for O(1) lookup and a container/list.List for recency ordering, with each entry holding its *list.Element. There's a single sync.Mutex field, mu. Get takes mu.Lock, looks up the key, calls l.MoveToFront on the element, unlocks, returns the value. Set takes mu.Lock, inserts or updates, pushes front, and if len > capacity calls evict, unlocks. So far so locked. But the corruption means something is reaching the map or the list without going through mu. I need to find every reader and writer, not just the obvious two methods. Grep for the struct fields directly.",
+      "thought": "Cache is map plus container/list guarded by a single sync.Mutex; Get and Set both lock correctly, so the unguarded access must be somewhere other than these two obvious methods.",
+      "entities": [
+        "sync.mutex",
+        "container/list",
+        "movetofront",
+        "get",
+        "set"
+      ]
+    },
+    {
+      "id": 2,
+      "branch": 0,
+      "parent": 1,
+      "tick": 2,
+      "kind": "observe",
+      "full": "Grepping for the field names across the package. The map is touched in Get, Set, evict, and — here it is — a method Stats() that ranges over the map to count entries and sum sizes, and a goroutine in NewCache that runs a janitor ticking every 30s to expire TTL'd entries. Two new suspects. Stats ranges the map; does it take mu? Let me check. And the janitor deletes from the map on its own ticker goroutine. If either of those touches the map without mu, that's a concurrent map read/write, which Go's runtime will sometimes detect as a fatal 'concurrent map writes' but more often just silently corrupts the map's internal buckets — exactly the cross-key value bleed we're seeing.",
+      "thought": "Two more map touchers surface beyond Get/Set: a Stats() ranging the map and a background janitor goroutine deleting expired entries on a ticker — either could be the unsynchronized access.",
+      "entities": [
+        "map",
+        "stats",
+        "janitor",
+        "ticker",
+        "concurrent-map-writes"
+      ]
+    },
+    {
+      "id": 3,
+      "branch": 0,
+      "parent": 2,
+      "tick": 3,
+      "kind": "decide",
+      "full": "I have two genuinely plausible, independent culprits and I don't want to anchor on the first. Let me split and pursue both in parallel rather than serially confirming one. Hypothesis H1: the eviction path mutates the list and map but there's a window where evict is reachable without mu held — a re-entrancy or a deferred-unlock bug that releases mu too early. Hypothesis H2: the janitor goroutine (and/or Stats) writes/reads the map with no mu at all, a straight unsynchronized background access. These predict different race-detector signatures, so I can discriminate them. I'll stash the convergence and develop each line on its own branch before deciding.",
+      "thought": "Two independent culprits — H1 eviction reachable without the mutex held, H2 the janitor/Stats touching the map with no synchronization — so split and develop both in parallel before converging.",
+      "entities": [
+        "hypothesis",
+        "eviction",
+        "janitor",
+        "mutex",
+        "branch"
+      ]
+    },
+    {
+      "id": 4,
+      "branch": 1,
+      "parent": 3,
+      "tick": 4,
+      "kind": "explore",
+      "full": "Branch H1. Walking evict carefully. evict is called only from Set, which already holds mu, and evict itself doesn't lock — correct, you must not re-lock a non-reentrant sync.Mutex or you deadlock. So evict runs under the caller's lock. Reading the body: it grabs l.Back(), reads elem.Value.(*entry).key, deletes that key from the map, and calls l.Remove(elem). That all looks atomic w.r.t. mu. But wait — Set's structure: it does mu.Lock() then defer mu.Unlock() at the top? Let me confirm the unlock is deferred and not an early manual Unlock before evict. If there's an early mu.Unlock() followed by evict, the eviction would run unlocked.",
+      "thought": "On the H1 branch, evict correctly runs under the caller's lock and is only reached from Set; the open question is whether Set unlocks early via a manual mu.Unlock() before calling evict.",
+      "entities": [
+        "evict",
+        "set",
+        "mu.unlock",
+        "defer",
+        "list.remove"
+      ]
+    },
+    {
+      "id": 5,
+      "branch": 1,
+      "parent": 4,
+      "tick": 5,
+      "kind": "verify",
+      "full": "Reading Set's exact lock discipline. It's mu.Lock() then defer mu.Unlock() on the next line — clean, no early manual unlock, no re-entrancy. evict is always under the lock. So H1 as I framed it — eviction running unlocked — is wrong; the eviction path is correctly serialized by mu. That's a real result, not a dead end: it rules out the prettier hypothesis and pushes weight onto H2 (the background goroutine). I'll stash H1 here rather than delete it — there may still be a subtler list-pointer aliasing issue in eviction if an entry's *list.Element is shared, but that's lower probability now. Park it and go develop H2 properly.",
+      "thought": "Set uses Lock then defer Unlock with no early unlock, so eviction is always serialized by mu; H1-as-framed is refuted, weight shifts to H2, and I stash H1 rather than discard it.",
+      "entities": [
+        "set",
+        "defer",
+        "lock-discipline",
+        "evict",
+        "h1-refuted"
+      ]
+    },
+    {
+      "id": 6,
+      "branch": 2,
+      "parent": 3,
+      "tick": 6,
+      "kind": "explore",
+      "full": "Branch H2. The janitor goroutine, started in NewCache. Reading its loop: for range ticker.C { c.expire() }. And expire(): it ranges c.m, checks each entry's expiresAt against now, and for stale ones calls delete(c.m, k) and c.list.Remove(elem). Critically — does expire take mu? Scrolling... no. There is no c.mu.Lock() anywhere in expire. So the janitor deletes from the map and mutates the recency list every 30 seconds with zero synchronization, concurrently with Get and Set on the request goroutines. That is a textbook unsynchronized concurrent map write plus a concurrent container/list mutation. This is almost certainly the bug. Both the cross-key value bleed (corrupted map buckets) and the nil deref (a list element removed mid-traversal) fall out of this directly.",
+      "thought": "The janitor's expire() ranges, deletes from the map, and mutates the recency list every 30s with NO mu.Lock — an unsynchronized concurrent map write racing Get/Set, explaining the value bleed and nil deref.",
+      "entities": [
+        "janitor",
+        "expire",
+        "map-delete",
+        "list.remove",
+        "no-lock"
+      ]
+    },
+    {
+      "id": 7,
+      "branch": 2,
+      "parent": 6,
+      "tick": 7,
+      "kind": "verify",
+      "full": "Before I commit to this, I want the race detector to actually point its finger here rather than me reasoning it into being the culprit. I'll write a focused test: construct a cache with a 1s TTL and tiny capacity so the janitor fires often and eviction is hot, then spin up, say, 50 goroutines hammering Get and Set on overlapping keys for a couple seconds, and run it with -race. If H2 is right, the detector should report a read/write race with one side in expire (janitor stack) and the other in Get or Set. I'll lower the janitor tick in the test via an injectable interval so I don't wait 30s. Determinism doesn't matter here — I only need the race to manifest once under -race, which flags the access pair regardless of timing.",
+      "thought": "Plan a -race test: tiny TTL and capacity, an injectable fast janitor tick, 50 goroutines hammering Get/Set on overlapping keys, expecting the detector to flag a read/write pair with one side inside expire.",
+      "entities": [
+        "race-detector",
+        "concurrent-test",
+        "ttl",
+        "janitor-tick",
+        "goroutines"
+      ]
+    },
+    {
+      "id": 8,
+      "branch": 2,
+      "parent": 7,
+      "tick": 8,
+      "kind": "observe",
+      "full": "Ran go test -race -run TestCacheConcurrent. It fails loudly, exactly as predicted. The report: WARNING: DATA RACE. Write at 0x... by goroutine 41 — runtime.mapdelete, inside cache.(*Cache).expire. Previous read at the same address by goroutine 12 — runtime.mapaccess, inside cache.(*Cache).Get. Two stacks, one in the janitor's expire, one in Get, on the same map. There's a second race pair reported too: container/list pointer writes in expire's list.Remove racing list.MoveToFront in Get. So H2 is confirmed and it's actually two coupled races sharing the same root cause: expire mutates both shared structures with no lock. H1 stays correctly parked.",
+      "thought": "go test -race confirms H2: a DATA RACE between mapdelete in expire (janitor) and mapaccess in Get, plus a second pair between expire's list.Remove and Get's MoveToFront — both from expire holding no lock.",
+      "entities": [
+        "data-race",
+        "mapdelete",
+        "mapaccess",
+        "expire",
+        "list.remove"
+      ]
+    },
+    {
+      "id": 9,
+      "branch": 2,
+      "parent": 8,
+      "tick": 9,
+      "kind": "explore",
+      "full": "So the fix is conceptually trivial: expire must take c.mu like every other mutator. But I should think about it carefully rather than slapping a Lock around the whole loop, because expire ranges the entire map and that could be a long critical section under a 30s scan of a large cache — holding mu for the full range would stall every Get and Set for the duration of the sweep. Two options. Option A: lock the whole expire — simplest, correct, but a latency spike each tick proportional to cache size. Option B: collect the expired keys under a brief read pass, then re-lock and delete them in a tight second pass, minimizing lock hold time. I lean toward correctness-first (Option A) and only optimize if the sweep latency actually shows up in the p99.",
+      "thought": "Fix is to make expire take c.mu like every mutator; weigh Option A (lock the whole sweep, simple but a per-tick latency spike) vs Option B (collect-then-delete to shorten the critical section), correctness-first.",
+      "entities": [
+        "fix",
+        "mu.lock",
+        "expire",
+        "critical-section",
+        "p99-latency"
+      ]
+    },
+    {
+      "id": 10,
+      "branch": 2,
+      "parent": 9,
+      "tick": 10,
+      "kind": "compute",
+      "full": "Let me size the critical section before deciding. The cache caps at ~50k entries. A range over a 50k map checking a timestamp comparison is on the order of low hundreds of microseconds — a single-digit-millisecond worst case with deletes. Holding mu for a few ms once every 30s is a negligible availability hit versus the simplicity win of one lock. Option B's two-pass approach also has a subtle correctness wrinkle: between the read pass and the delete pass, a key I marked expired could be refreshed by a Set, and I'd then wrongly delete a now-valid entry unless I recheck expiresAt under the second lock. That recheck adds complexity for a latency win I haven't measured. Decision input: Option A is correct and cheap enough; reject B for now.",
+      "thought": "Sizing it: a 50k-entry sweep is single-digit milliseconds once per 30s, and Option B risks deleting an entry a concurrent Set just refreshed unless I recheck expiresAt under lock, so Option A wins.",
+      "entities": [
+        "critical-section",
+        "50k-entries",
+        "option-a",
+        "option-b",
+        "expiresat"
+      ]
+    },
+    {
+      "id": 11,
+      "branch": 2,
+      "parent": 10,
+      "tick": 11,
+      "kind": "decide",
+      "full": "Decided: wrap expire's body in c.mu.Lock()/defer c.mu.Unlock(), making it a peer of Get/Set/evict under the single mutex. While I'm in here, I'll also harden the type by documenting the invariant at the top of the struct: every access to c.m and c.list must hold c.mu — name the rule so the next person doesn't reintroduce a lock-free toucher. The deeper lesson is that the bug wasn't in the hot path everyone reviews; it was in a background goroutine added later that quietly assumed single-threaded access. Worth a structural guard, not just a point fix.",
+      "thought": "Decision: lock expire under c.mu as a peer of Get/Set/evict, and document the struct invariant that every access to c.m and c.list must hold c.mu, since a later background goroutine assumed single-threaded access.",
+      "entities": [
+        "mu.lock",
+        "expire",
+        "invariant",
+        "background-goroutine",
+        "structural-guard"
+      ]
+    },
+    {
+      "id": 12,
+      "branch": 2,
+      "parent": 11,
+      "tick": 12,
+      "kind": "verify",
+      "full": "Applied the lock to expire and re-ran go test -race -run TestCacheConcurrent, ten iterations with -count=10 to fight the intermittency. All pass, no DATA RACE warnings. Then the full package with -race: green. The two race pairs from tick 8 — mapdelete vs mapaccess, and list.Remove vs MoveToFront — are both gone, which makes sense since locking expire serializes it against Get and Set on the same mutex. Good. But the race detector only flags races it actually observes during a run, so green isn't a proof of absence. I have one nagging thread: Stats() also ranged the map back at tick 2, and I never confirmed whether it locks. Green tests can hide a still-unguarded reader that my test workload just didn't schedule into a race.",
+      "thought": "After locking expire, -race -count=10 and the full package are green, both race pairs gone — but -race only flags observed races, and I never confirmed whether Stats(), which also ranges the map, locks.",
+      "entities": [
+        "go-test-race",
+        "count-10",
+        "green",
+        "stats",
+        "absence-of-proof"
+      ]
+    },
+    {
+      "id": 13,
+      "branch": 5,
+      "parent": 12,
+      "tick": 13,
+      "kind": "aside",
+      "full": "Returning to the Stats() thread I noticed at tick 2 and then dropped to chase the janitor. Reading Stats now: it ranges c.m to count entries and sum byte sizes, and — no c.mu anywhere. It's another unsynchronized reader of the shared map, exact same class of bug as expire was, just a read instead of a write. The reason -race stayed green is that Stats is only called from the /metrics HTTP handler, which Prometheus scrapes every 15s; my concurrent test never hit that endpoint, so the scheduler never overlapped a Stats range with a Set write. This is precisely the silent-unguarded-reader I worried about one step ago. The point fix on expire alone would have left a live, scrape-triggered race in prod.",
+      "thought": "Revisiting the stashed Stats() thread: it ranges c.m with no c.mu — same unsynchronized-access bug class as expire — and -race stayed green only because my test never hit the /metrics handler Prometheus scrapes.",
+      "entities": [
+        "stats",
+        "no-lock",
+        "metrics",
+        "prometheus",
+        "unguarded-reader"
+      ]
+    },
+    {
+      "id": 14,
+      "branch": 5,
+      "parent": 13,
+      "tick": 14,
+      "kind": "decide",
+      "full": "This vindicates the instinct to stash rather than discard threads. Decision: fix Stats the same way — take c.mu for the range. Since Stats is read-only over the shared state and is on a 15s scrape path, I'll use a RWMutex consideration here. Actually, let me hold that thought: switching c.mu from sync.Mutex to sync.RWMutex would let Stats and concurrent Gets share a read lock and only Set/expire take the write lock. But Get also mutates — MoveToFront reorders the recency list — so Get is NOT a pure reader and can't hold only an RLock. That kills the naive RWMutex win for the LRU. Keep the plain Mutex; just make Stats lock it like everyone else. Simplicity and a uniform invariant beat a clever lock that the LRU's read-mutates-recency property defeats anyway.",
+      "thought": "Fix Stats by taking c.mu too; reject switching to RWMutex because Get isn't a pure reader — MoveToFront mutates the recency list — so Get can't hold only an RLock, defeating the read-lock optimization.",
+      "entities": [
+        "stats",
+        "rwmutex",
+        "movetofront",
+        "rlock",
+        "uniform-invariant"
+      ]
+    },
+    {
+      "id": 15,
+      "branch": 5,
+      "parent": 14,
+      "tick": 15,
+      "kind": "verify",
+      "full": "To actually catch the Stats race in a test rather than reason about it, I extended TestCacheConcurrent to also spawn a goroutine that calls Stats() in a tight loop alongside the Get/Set hammer. Ran it with -race BEFORE applying the Stats lock to confirm the test can see the bug: it failed with a DATA RACE — mapaccess in Stats vs mapdelete in expire. Good, the test has teeth now; it would have stayed silent otherwise. Then applied c.mu.Lock around Stats's range and re-ran -count=20 -race: all green, both the expire and the Stats pairs clean. This is the right order — prove the test fails first, then fix — so I know the green isn't a false negative from a workload that never schedules the race.",
+      "thought": "Added a Stats() hammer to the concurrent test, confirmed it fails under -race (mapaccess in Stats vs mapdelete in expire) BEFORE the fix, then locked Stats and re-ran -count=20 -race to green.",
+      "entities": [
+        "test",
+        "stats",
+        "race-detector",
+        "mapaccess",
+        "fail-first"
+      ]
+    },
+    {
+      "id": 16,
+      "branch": 0,
+      "parent": 15,
+      "tick": 16,
+      "kind": "plan",
+      "full": "Both unsynchronized touchers — expire and Stats — are now locked and the concurrent -race test fails-then-passes for each. But I want to close the class of bug, not just the two instances, because this is the second time a 'later-added' method forgot the mutex. The real defect is that nothing in the type enforces the invariant 'every access to c.m and c.list holds c.mu'. Plan the durable guard: first, an exhaustive audit of every reference to c.m and c.list in the package to be sure there's no third forgotten toucher; second, a structural change that makes the invariant hard to violate; third, a standing test in CI that would catch a future regression. Let me do the audit first — completeness over cleverness.",
+      "thought": "With expire and Stats fixed, plan to close the bug CLASS: exhaustively audit every reference to c.m and c.list for a third forgotten toucher, then add a structural guard and a standing CI -race test.",
+      "entities": [
+        "audit",
+        "invariant",
+        "c.m",
+        "c.list",
+        "ci-test"
+      ]
+    },
+    {
+      "id": 17,
+      "branch": 0,
+      "parent": 16,
+      "tick": 17,
+      "kind": "observe",
+      "full": "Full audit: grepping c.m and c.list across the package and inspecting each hit. Get (locked), Set (locked), evict (under caller's lock), expire (now locked), Stats (now locked), and Len() — which returns len(c.m). Len does NOT lock. len() on a map is a single word read; is it racy? Technically yes: a concurrent map write (delete in expire) racing len() is a data race the detector can flag, even though the read is 'just' a size word, because the map header's count field is written non-atomically during delete. So Len is a fourth toucher. That's three lock-forgetting methods (expire, Stats, Len) versus three that got it right — the invariant clearly is not self-enforcing. Confirms the structural-guard plan.",
+      "thought": "Audit finds a fourth toucher: Len() returns len(c.m) without locking, which is technically a race against expire's delete since map count is written non-atomically — three methods forgot the lock, proving the invariant isn't self-enforcing.",
+      "entities": [
+        "audit",
+        "len",
+        "map-count",
+        "data-race",
+        "unlocked"
+      ]
+    },
+    {
+      "id": 18,
+      "branch": 0,
+      "parent": 17,
+      "tick": 18,
+      "kind": "decide",
+      "full": "Decision on the structural guard. The cleanest enforcement that fits Go: rename the raw fields to make direct access stick out (c.m, c.list stay private, but I add tiny locked accessor helpers and route every method through them isn't quite enough). Better: keep the mutex but add a single invariant comment block AND a go vet / staticcheck pass plus the standing -race CI test. Honestly the strongest practical guard here is the race-detector CI gate over a representative concurrent workload — that's what would have caught all four. I'll lock Len, add the documented invariant, and make the concurrent -race test a required CI check exercising Get/Set/Stats/Len/expire together. Not going to over-engineer a lock-wrapper type for a single cache; the CI gate is the high-leverage move.",
+      "thought": "Decide the guard: lock Len too, document the invariant, and make the concurrent -race test (Get/Set/Stats/Len/expire together) a required CI gate — the high-leverage move that would have caught all four.",
+      "entities": [
+        "len",
+        "ci-gate",
+        "race-detector",
+        "invariant",
+        "staticcheck"
+      ]
+    },
+    {
+      "id": 19,
+      "branch": 0,
+      "parent": 18,
+      "tick": 19,
+      "kind": "verify",
+      "full": "Locked Len. Re-ran the now-comprehensive concurrent test under -race -count=20 with goroutines hammering Get, Set, Stats, and Len while the janitor fires on a 5ms injected tick: fully green across all twenty runs, no DATA RACE anywhere. Then I ran the original prod-load reproduction harness for two minutes under -race — the one that surfaced the cross-key value bleed — and it stayed clean, no corruption, no nil deref. That's the real acceptance signal: the exact workload that produced the bug report now runs race-free. The three forgotten lockers (expire, Stats, Len) were all symptoms of one root cause: a single mutex whose invariant lived only in a comment, plus background/observability methods added after the hot path was reviewed.",
+      "thought": "Locked Len; the comprehensive -race -count=20 test (Get/Set/Stats/Len + 5ms janitor) is green, and the two-minute prod-load reproduction runs race-free with no value bleed or nil deref — the bug is fixed.",
+      "entities": [
+        "len",
+        "race-detector",
+        "prod-reproduction",
+        "value-bleed",
+        "green"
+      ]
+    },
+    {
+      "id": 20,
+      "branch": 3,
+      "parent": 19,
+      "tick": 20,
+      "kind": "explore",
+      "full": "One more thing nags me before I call this done. The race detector only catches races it schedules during the run; even a 2-minute -race run is sampling, not a proof. Is there a way to make the invariant statically checkable so I'm not relying on observing the race? Idea: extract the map+list+mutex into a small unexported lockedStore type whose only methods take the lock internally, and forbid the outer Cache from touching the raw map at all. Then 'access requires the lock' becomes a property the compiler enforces by encapsulation — there's literally no syntactic path to the map that bypasses the lock. That converts a runtime-detected race into a structurally impossible one. Worth prototyping to see if it's clean or if the LRU's element-pointer bookkeeping leaks across the boundary.",
+      "thought": "Since -race only samples, explore making the invariant static: extract map+list+mutex into an unexported lockedStore whose methods lock internally, so 'access needs the lock' becomes compiler-enforced encapsulation rather than a runtime-observed race.",
+      "entities": [
+        "lockedstore",
+        "encapsulation",
+        "static-guard",
+        "lock",
+        "compile-time"
+      ]
+    },
+    {
+      "id": 21,
+      "branch": 3,
+      "parent": 20,
+      "tick": 21,
+      "kind": "observe",
+      "full": "Prototyping the lockedStore. It holds m, list, mu and exposes get(key), put(key,val), delete(key), forEach(fn) for Stats, and length() — each taking mu internally. The Cache becomes a thin policy layer over it. Two friction points emerged. First, MoveToFront-on-Get means get() must mutate under the same lock, so the store's get isn't read-only — fine, it just locks. Second, forEach hands the caller a callback that runs WHILE the store lock is held; if a caller's callback re-entered the store it'd self-deadlock. So I have to document that forEach callbacks must not call back into the store. That's a real sharp edge but a small, contained one, and it's far better than the current 'every method must remember to lock' which already failed three times.",
+      "thought": "lockedStore prototype works (get/put/delete/forEach/length each lock internally), with two sharp edges: get mutates under lock because of MoveToFront, and forEach runs the callback under the lock so callbacks must not re-enter.",
+      "entities": [
+        "lockedstore",
+        "foreach",
+        "callback",
+        "reentrancy",
+        "movetofront"
+      ]
+    },
+    {
+      "id": 22,
+      "branch": 3,
+      "parent": 21,
+      "tick": 22,
+      "kind": "decide",
+      "full": "Scope decision. The lockedStore is the structurally correct end state, but it's a non-trivial refactor that changes the cache's internal shape and needs its own review and test pass. The bug report is a P1 prod corruption; shipping the minimal correct fix (four methods locked + CI -race gate) now and landing the lockedStore as a follow-up is the responsible sequencing. I'll file the lockedStore as a tracked refactor with the prototype attached, so it doesn't evaporate. Ship order: (1) the four lock additions, (2) the comprehensive concurrent -race test as a CI gate, (3) the invariant doc comment, then later (4) the encapsulation refactor that makes the comment unnecessary. Correctness now, structural guarantee next.",
+      "thought": "Scope decision: ship the minimal correct fix now (four methods locked + -race CI gate + invariant doc) for the P1 corruption, and land the lockedStore encapsulation as a tracked follow-up so it doesn't evaporate.",
+      "entities": [
+        "scope",
+        "p1",
+        "lockedstore",
+        "ci-gate",
+        "follow-up"
+      ]
+    },
+    {
+      "id": 23,
+      "branch": 0,
+      "parent": 22,
+      "tick": 23,
+      "kind": "plan",
+      "full": "Now the part I keep seeing people botch: cleaning up the janitor goroutine. While I was in expire I noticed NewCache spawns the janitor with go c.janitorLoop() but there's no way to stop it — no done channel, no context. In a long-lived service that's fine, but our integration tests construct and discard caches per test, leaking a goroutine each, and a leaked janitor holding c.mu during a sweep on a cache that tests think is dead could even mask or move races. Plan: give the cache a Close() that cancels a context/closes a done channel the janitorLoop selects on, and have the tests defer Close(). It's adjacent to the race fix and the right time to do it, but I'll keep it a separate commit so the race fix stays reviewable on its own.",
+      "thought": "Adjacent cleanup: the janitor goroutine has no stop mechanism (no done channel/context), leaking a goroutine per cache in tests; plan a Close() that cancels janitorLoop, in a separate commit to keep the race fix reviewable.",
+      "entities": [
+        "janitor",
+        "goroutine-leak",
+        "close",
+        "done-channel",
+        "context"
+      ]
+    },
+    {
+      "id": 24,
+      "branch": 0,
+      "parent": 23,
+      "tick": 24,
+      "kind": "verify",
+      "full": "Implemented Close(): janitorLoop now selects on ticker.C and a done channel; Close closes done once via sync.Once and stops the ticker. Tests defer cache.Close(). Ran the suite under -race with goroutine-leak detection (uber-go/goleak in TestMain): green, zero leaked goroutines, where before goleak reported one leaked janitor per cache-constructing test. Good. Re-ran the full concurrent -race -count=20 once more after the Close change to be sure the done-channel select didn't introduce a new race on the ticker or done — clean. The Close path itself takes no cache lock and only touches the done channel and ticker, so it can't race the map. Everything green.",
+      "thought": "Close() implemented (janitorLoop selects ticker.C plus a done channel, closed via sync.Once); goleak now reports zero leaked goroutines where it flagged one per cache before, and the full -race -count=20 stays green after the change.",
+      "entities": [
+        "close",
+        "goleak",
+        "done-channel",
+        "sync.once",
+        "race-detector"
+      ]
+    },
+    {
+      "id": 25,
+      "branch": 0,
+      "parent": 24,
+      "tick": 25,
+      "kind": "observe",
+      "full": "Stepping back to sanity-check the whole causal story holds together. The original symptoms were (a) cross-key value bleed and (b) nil deref in Get, intermittent, load-only, prod-and-load-test-only. Root cause: three observability/background methods — expire (janitor), Stats (metrics), Len — accessed the shared map and recency list with no mutex, racing the locked Get/Set. (a) is corrupted map buckets from a concurrent delete during a map access; (b) is Get reading a *list.Element that expire's Remove had already detached, leaving a dangling/nil pointer. Both fall directly out of the unsynchronized accesses, and both vanish once those three methods lock. The 'load-only, never in unit tests' part is explained too: unit tests are single-goroutine and never run the janitor long enough or hit /metrics. The story is complete and consistent.",
+      "thought": "Causal story checks out: value bleed = corrupted map buckets from a concurrent delete; nil deref = Get reading a list.Element that expire's Remove detached — both from expire/Stats/Len racing locked Get/Set.",
+      "entities": [
+        "value-bleed",
+        "nil-deref",
+        "expire",
+        "list.element",
+        "root-cause"
+      ]
+    },
+    {
+      "id": 26,
+      "branch": 0,
+      "parent": 25,
+      "tick": 26,
+      "kind": "verify",
+      "full": "I want one more independent confirmation that's not just my own -race test, because confirmation bias is real when you've already decided you're right. I reverted just the expire lock (kept Stats and Len locked) on a scratch branch and reran the prod-load reproduction under -race: it failed again with the mapdelete-vs-mapaccess pair, confirming that specific lock is load-bearing and not incidental. Then restored it. This differential check — remove one fix, confirm the bug returns, restore — proves each lock is doing real work rather than the bug being masked by some unrelated timing change from my edits. Did the same quick revert-and-confirm for the Stats lock via the /metrics-hammer test. Both load-bearing. Confidence is now earned, not assumed.",
+      "thought": "Differential confirmation: reverted only the expire lock and the prod-load -race repro failed again (mapdelete vs mapaccess), then restored it; did the same for Stats — proving each lock is load-bearing.",
+      "entities": [
+        "differential-test",
+        "revert",
+        "expire-lock",
+        "load-bearing",
+        "race-detector"
+      ]
+    },
+    {
+      "id": 27,
+      "branch": 4,
+      "parent": 26,
+      "tick": 27,
+      "kind": "decide",
+      "full": "Converging. The fix that ships: lock expire, Stats, and Len under the existing c.mu so all five state-touching methods share one mutex; add a documented struct invariant naming the rule; add Close() with a done channel and sync.Once to stop the janitor; and gate it all with a comprehensive concurrent -race test (Get/Set/Stats/Len + fast janitor) plus goleak, made a required CI check. The lockedStore encapsulation is filed as a follow-up refactor to make the invariant compiler-enforced. The earlier H1 (eviction unlocked) was correctly refuted at tick 5 and the real culprit was the H2 family — background and observability methods that forgot the mutex. Decision is final; writing the commit.",
+      "thought": "Converged fix: lock expire/Stats/Len under c.mu (all five methods, one mutex), document the invariant, add Close() with done channel + sync.Once, gate with a -race test plus goleak in CI. H2 was the cause.",
+      "entities": [
+        "converge",
+        "mu",
+        "close",
+        "ci-gate",
+        "lockedstore"
+      ]
+    },
+    {
+      "id": 28,
+      "branch": 4,
+      "parent": 27,
+      "tick": 28,
+      "kind": "compute",
+      "full": "Quick performance gut-check on the converged fix before committing, since I'm adding lock acquisitions to Stats and Len that previously ran lock-free. Get and Set already take the lock on every call, so the request hot path is unchanged — no new contention there. Stats now locks on the 15s metrics scrape: one extra lock acquisition every 15s, negligible. Len locks per call; if some hot path calls Len in a loop that could add contention, so let me grep callers. Len is called once per admission decision in the rate limiter, not in a tight loop — fine. The only meaningful new critical section is expire's full-map sweep under lock, which I already sized at single-digit ms once per 30s back at tick 10. No performance regression worth acting on.",
+      "thought": "Perf gut-check: Get/Set hot path unchanged (already locked); Stats locks once per 15s scrape; Len's callers aren't tight loops; the only new critical section is expire's sweep, already sized at single-digit ms per 30s.",
+      "entities": [
+        "performance",
+        "contention",
+        "stats",
+        "len",
+        "expire-sweep"
+      ]
+    },
+    {
+      "id": 29,
+      "branch": 4,
+      "parent": 28,
+      "tick": 29,
+      "kind": "verify",
+      "full": "Final pre-commit verification pass. Full package go test -race -count=10: green. The two-minute prod-load reproduction under -race: green, zero corruption. goleak in TestMain: zero leaked goroutines. go vet and staticcheck: clean. I also added the comprehensive concurrent test to the CI workflow with the -race flag explicitly, and confirmed the CI config runs it (not just the default non-race test pass, which is the gap that let this ship originally — CI was running go test WITHOUT -race). That last fix is arguably the most important: the bug existed because CI never ran the race detector on a concurrent workload. Enabling -race in CI is the durable guard that catches the next forgotten lock automatically.",
+      "thought": "Final verification: -race -count=10, two-minute prod repro, goleak, vet, and staticcheck all green; crucially added -race to the CI workflow (it ran go test WITHOUT -race) — the durable guard for the next forgotten lock.",
+      "entities": [
+        "go-test-race",
+        "goleak",
+        "staticcheck",
+        "ci-workflow",
+        "durable-guard"
+      ]
+    },
+    {
+      "id": 30,
+      "branch": 4,
+      "parent": 29,
+      "tick": 30,
+      "kind": "decide",
+      "full": "Done and committing in three reviewable commits: (1) the four lock additions to expire/Stats/Len plus the documented invariant — the actual race fix; (2) Close() with done channel and sync.Once plus goleak in TestMain — the goroutine-leak fix; (3) the comprehensive concurrent -race test and the CI workflow change to run go test with -race. The lockedStore encapsulation and the optional collect-then-delete two-pass expire are filed as tracked follow-ups, not blockers. The episode's real lesson, written into the PR description: the corruption wasn't in the reviewed hot path — it was in background and observability methods added later that silently assumed single-threaded access, and the true root defect was a CI that never ran -race on a concurrent workload. Shipping.",
+      "thought": "Final decision: ship in three reviewable commits (lock fix + invariant; Close + goleak; -race test + CI gate), file lockedStore and two-pass expire as follow-ups; the bug lived in later-added background methods.",
+      "entities": [
+        "commit",
+        "close",
+        "ci-gate",
+        "lockedstore",
+        "lesson"
+      ]
+    }
+  ],
+  "probes": [
+    {
+      "focus_id": 13,
+      "should_surface": [
+        2,
+        6
+      ],
+      "should_fade": [
+        11,
+        12
+      ],
+      "why": "Returning to the stashed Stats() thread (focus 13): unit 2 first spotted Stats ranging the map, and unit 6 established the same unsynchronized-map-access bug class via the janitor — both genuinely relevant and 7+ ticks earlier on different branches. Units 11-12 are the recent expire-lock decision/verify, irrelevant to whether Stats is guarded."
+    },
+    {
+      "focus_id": 17,
+      "should_surface": [
+        2,
+        6
+      ],
+      "should_fade": [
+        15,
+        16
+      ],
+      "why": "The c.m/c.list audit (focus 17) is exactly the enumerate-every-toucher idea from unit 2 and the unsynchronized-map-access pattern from unit 6, both far earlier and on other branches. The just-prior Stats fix-verify (15) and the plan-the-guard unit (16) are adjacent and don't help find a forgotten toucher."
+    },
+    {
+      "focus_id": 26,
+      "should_surface": [
+        5,
+        8
+      ],
+      "should_fade": [
+        24,
+        25
+      ],
+      "why": "The differential revert-and-confirm (focus 26) directly relies on the original -race signatures from unit 8 (mapdelete vs mapaccess) and mirrors the refutation method from unit 5 (remove a hypothesis, confirm), both 18+ ticks earlier on different branches. The recent Close()/causal-story units 24-25 are unrelated to proving each lock is load-bearing."
+    },
+    {
+      "focus_id": 28,
+      "should_surface": [
+        9,
+        10
+      ],
+      "should_fade": [
+        26,
+        27
+      ],
+      "why": "The performance gut-check (focus 28) reopens the critical-section sizing from units 9 and 10 (the expire sweep ms-per-30s estimate, lock-hold-time tradeoff), both ~18 ticks earlier on the H2 branch. The recent differential-test and converge units 26-27 are about correctness/scope, not latency."
+    },
+    {
+      "focus_id": 20,
+      "should_surface": [
+        11,
+        1
+      ],
+      "should_fade": [
+        18,
+        19
+      ],
+      "why": "The static-guard idea (focus 20) builds on the invariant 'every access to c.m/c.list holds c.mu' first named in unit 11 and on the original struct shape (map+list+single mutex) described in unit 1 — both well earlier on other branches. The just-prior Len fix-verify (19) and the CI-gate decision (18) are adjacent and don't inform the encapsulation design."
+    }
+  ]
+}

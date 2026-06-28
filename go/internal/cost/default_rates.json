@@ -1,0 +1,41 @@
+{
+  "_comment": "Rate card: model-id -> USD per 1,000,000 tokens. in_uncached = input cache-MISS price; in_cached = input cache-HIT (prompt-cache) price; out = output (completion) price. An UNKNOWN model id (one not listed here) is reported as 'rates unknown' by the cost report — never silently priced at 0. Edit this file (or pass --rates PATH to bench) to add/override a row. Numbers are USD/Mtok; the cost code divides by 1e6.",
+  "_sources": [
+    "DeepSeek published per-Mtok pricing (verified 2026-06-09): https://api-docs.deepseek.com/quick_start/pricing — deepseek-chat/deepseek-reasoner are the non-thinking/thinking modes of deepseek-v4-flash (legacy names, deprecated 2026-07-24) and share its pricing.",
+    "deepseek-v4-flash: input cache-miss $0.14, input cache-hit $0.0028 (1/10 of miss, ~98% off), output $0.28 per Mtok.",
+    "deepseek-v4-pro: input cache-miss $1.74, input cache-hit $0.0145, output $3.48 per Mtok.",
+    "OpenAI/local rows are illustrative example rates, not authoritative — verify before billing."
+  ],
+  "rates": {
+    "deepseek-chat": {
+      "in_uncached": 0.14,
+      "in_cached": 0.0028,
+      "out": 0.28
+    },
+    "deepseek-reasoner": {
+      "in_uncached": 0.14,
+      "in_cached": 0.0028,
+      "out": 0.28
+    },
+    "deepseek-v4-flash": {
+      "in_uncached": 0.14,
+      "in_cached": 0.0028,
+      "out": 0.28
+    },
+    "deepseek-v4-pro": {
+      "in_uncached": 1.74,
+      "in_cached": 0.0145,
+      "out": 3.48
+    },
+    "gpt-4o-mini": {
+      "in_uncached": 0.15,
+      "in_cached": 0.075,
+      "out": 0.6
+    },
+    "gpt-4o": {
+      "in_uncached": 2.5,
+      "in_cached": 1.25,
+      "out": 10.0
+    }
+  }
+}

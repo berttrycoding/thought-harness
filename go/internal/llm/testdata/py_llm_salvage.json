@@ -1,0 +1,141 @@
+{
+  "loads_object": [
+    {
+      "in": "{\"verdict\":\"ADMIT\",\"confidence\":0.9}",
+      "obj": {
+        "verdict": "ADMIT",
+        "confidence": 0.9
+      },
+      "err": null
+    },
+    {
+      "in": "Sure! Here is the JSON:\n```json\n{\"verdict\": \"REJECT\"}\n```",
+      "obj": {
+        "verdict": "REJECT"
+      },
+      "err": null
+    },
+    {
+      "in": "prose {\"verdict\":\"FLAG\",\"reason\":\"x\"} trailing",
+      "obj": {
+        "verdict": "FLAG",
+        "reason": "x"
+      },
+      "err": null
+    },
+    {
+      "in": "noise {\"score\": 0.7, \"why\": \"strong line\"} more noise",
+      "obj": {
+        "score": 0.7,
+        "why": "strong line"
+      },
+      "err": null
+    },
+    {
+      "in": "leading <think>blah</think> {\"a\": 1, \"b\": [1,2,3]} tail",
+      "obj": {
+        "a": 1,
+        "b": [
+          1,
+          2,
+          3
+        ]
+      },
+      "err": null
+    }
+  ],
+  "loads_object_bad": [
+    {
+      "in": "no object here",
+      "obj": null,
+      "err": "ValueError"
+    },
+    {
+      "in": "just prose, nothing structured",
+      "obj": null,
+      "err": "ValueError"
+    },
+    {
+      "in": "{ this is not valid json at all }",
+      "obj": null,
+      "err": "JSONDecodeError"
+    },
+    {
+      "in": "",
+      "obj": null,
+      "err": "ValueError"
+    }
+  ],
+  "strip_think": [
+    {
+      "in": "<think>\nlots of\nreasoning\n</think>the answer",
+      "out": "the answer"
+    },
+    {
+      "in": "no think tags here",
+      "out": "no think tags here"
+    },
+    {
+      "in": "<think>a</think>X<think>b</think>Y",
+      "out": "XY"
+    },
+    {
+      "in": "   <think>x</think>   spaced   ",
+      "out": "spaced"
+    }
+  ],
+  "extract_content": [
+    {
+      "msg": {
+        "content": "hello",
+        "reasoning_content": "ignored"
+      },
+      "salvage": true,
+      "out": "hello"
+    },
+    {
+      "msg": {
+        "content": "",
+        "reasoning_content": "salvaged answer"
+      },
+      "salvage": true,
+      "out": "salvaged answer"
+    },
+    {
+      "msg": {
+        "content": "",
+        "reasoning_content": "salvaged answer"
+      },
+      "salvage": false,
+      "out": ""
+    },
+    {
+      "msg": {
+        "content": null,
+        "reasoning_content": "<think>cot</think>{\"v\":1}"
+      },
+      "salvage": true,
+      "out": "{\"v\":1}"
+    },
+    {
+      "msg": {
+        "content": "  spaced content  "
+      },
+      "salvage": true,
+      "out": "spaced content"
+    },
+    {
+      "msg": {
+        "content": "",
+        "reasoning_content": null
+      },
+      "salvage": true,
+      "out": ""
+    },
+    {
+      "msg": {},
+      "salvage": true,
+      "out": ""
+    }
+  ]
+}

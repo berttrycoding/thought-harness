@@ -1,0 +1,32 @@
+{
+  "schema": "thought-external-bank/v1",
+  "source": "arc-agi-2",
+  "id_prefix": "arc",
+  "items": [
+    {
+      "id": "agi2-eval-demo-01",
+      "capability": "multi-hop-grounding",
+      "prompt": "ARC-AGI-2 grid puzzle. The transform is: copy the input grid unchanged. INPUT grid (rows joined by ';', cells by ','):\n1,0;0,1\nProduce the OUTPUT grid in the same 'rows joined by ; cells by ,' format. Report only the grid string.",
+      "grader": "exact",
+      "expected": "1,0;0,1",
+      "normalizer": "token",
+      "lure": "0,1;1,0",
+      "why": "Identity transform: the cleanest ARC-AGI-2 demo item. The lure is the row-swapped grid a model emits when it over-pattern-matches a 'flip' rule that isn't there. Scored as the serialized grid string (exact, token-normalized).",
+      "human_min": 8.0
+    },
+    {
+      "id": "agi2-eval-demo-02",
+      "capability": "multi-hop-grounding",
+      "prompt": "Read grid.txt, which holds an ARC-AGI-2 input grid (rows joined by ';', cells by ','). The transform is: increment every cell by 1. Apply it and report only the output grid string in the same format.",
+      "files": {
+        "grid.txt": "0,1;2,3"
+      },
+      "grader": "exact",
+      "expected": "1,2;3,4",
+      "normalizer": "token",
+      "lure": "0,1;2,3",
+      "why": "Grid-bearing material the harness read-tools ground against; the lure is the un-transformed input a model returns when it forgets to apply the rule.",
+      "human_min": 18.0
+    }
+  ]
+}

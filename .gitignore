@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.installed.cfg
+
+# Virtualenvs
+.venv/
+venv/
+env/
+.python-version
+
+# Test / type / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime artifacts
+traces/
+*.trace.jsonl
+*.log
+compare_results.json
+
+# Substrate-segregated registry STATE + campaign batches (mutable, campaign-minted; never source).
+# Mirrors go/.gitignore for runs invoked with a repo-root --state path (e.g. data/registry-claude).
+/data/registry-*/
+/data/campaign-batches/
+/runs/
+
+# Node (the kitty-mcp TUI-testing server)
+node_modules/
+
+# Built tool binaries (rebuild: see tools/mcp/README.md)
+tools/bin/
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Multi-session coordination board — local scratchpad shared by live sessions, never committed
+.claude/coord/
+
+# Track O test-lock + invariant runtime state — local/ephemeral, never committed.
+# (The manifest .claude/test.lock and the hook logic ARE committed — the shared toggle.)
+.claude/test-unlocks/
+.claude/reports/
+
+# gated external benchmark data (GAIA etc.) — license-gated, never commit
+go/internal/bench/banks/external/data/
