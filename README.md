@@ -19,6 +19,15 @@ Implementation: Go and Bubble Tea, in [`go/`](go/). The design corpus is in [`do
 analysis), with per-layer notes in [`docs/cognition/`](docs/cognition/) and a terminology and component
 map in [`docs/reference/architecture-glossary.md`](docs/reference/architecture-glossary.md).
 
+## Demo
+
+A full thinking episode in the multi-panel TUI, running offline on the deterministic `test` backend
+(no API key, no network): the chat view, then the cognition view — the thought graph and A\* frontier,
+the subconscious specialists, the FILTER → GATE → TRANSFORM hidden seam, and the live durability
+dashboard. Regenerate with `vhs docs/demo.tape`.
+
+![Thought Harness — a thinking episode in the TUI, offline on the test backend](docs/demo.gif)
+
 ## Architecture
 
 Three layers, two seams. The seams have opposite transparency: one is hidden by design, the other is
